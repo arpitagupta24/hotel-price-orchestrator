@@ -1,0 +1,61 @@
+services:
+  postgresql:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_USER: temporal
+    ports:
+      - '5432:5432'
+    volumes:
+      - temporal_pgdata:/var/lib/postgresql/data
+
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    depends_on:
+      - postgresql
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql
+    ports:
+      - '7233:7233'
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+
+  app:
+    build: .
+    command: node dist/server.js
+    restart: unless-stopped
+    environment:
+      - PORT=3001
+      - TEMPORAL_ADDRESS=temporal:7233
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - API_BASE_URL=http://app:3001
+    ports:
+      - '3001:3001'
+    depends_on:
+      - temporal
+      - redis
+
+  worker:
+    build: .
+    command: node dist/temporal/worker.js
+    restart: on-failure
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - API_BASE_URL=http://app:3001
+    depends_on:
+      - temporal
+      - redis
+      - app
+
+volumes:
+  temporal_pgdata:
